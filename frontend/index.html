@@ -9,17 +9,13 @@
 <body>
   <div class="container">
     <h1>C150 Telemetry</h1>
-    <p class="sub">Upload → enter metadata + weights → download processed CSV.</p>
+    <p class="sub">Upload or Paste → Enter metadata + weights → Download processed CSV</p>
 
     <div class="card">
-      <label class="row">
-        <span>Backend URL</span>
-        <input id="backendUrl" type="text" placeholder="https://your-backend.onrender.com" />
-      </label>
 
       <label class="row">
         <span>Password</span>
-        <input id="password" type="password" placeholder="team password" />
+        <input id="password" type="password" placeholder="Team password" />
       </label>
 
       <label class="row">
@@ -41,7 +37,11 @@
         <label>
           <span>Zone</span>
           <select id="zone">
-            <option>T1</option><option>T2</option><option>T3</option><option>T4</option><option>T5</option>
+            <option>T1</option>
+            <option>T2</option>
+            <option>T3</option>
+            <option>T4</option>
+            <option>T5</option>
           </select>
         </label>
 
@@ -62,27 +62,28 @@
 
         <label class="span2">
           <span>Rig Info (comment)</span>
-          <input id="rigInfo" type="text" placeholder="82.5/83.0, gates 0, span 160" />
+          <input id="rigInfo" type="text" placeholder="82.5/83.0, span 160, gates 0" />
         </label>
 
         <label>
-          <span>Wind (m/s) — integer</span>
-          <input id="wind" type="number" step="1" placeholder="3" />
+          <span>Wind (m/s)</span>
+          <input id="wind" type="number" step="1" />
         </label>
 
         <label>
-          <span>Stream (m/s) — integer</span>
-          <input id="stream" type="number" step="1" placeholder="-1" />
+          <span>Stream (m/s)</span>
+          <input id="stream" type="number" step="1" />
         </label>
 
         <label>
-          <span>Temperature (°C) — integer</span>
-          <input id="temp" type="number" step="1" placeholder="4" />
+          <span>Temperature (°C)</span>
+          <input id="temp" type="number" step="1" />
         </label>
       </div>
 
       <div class="actions">
-        <button id="btnPreview" class="secondary">Preview Crew (Weights)</button>
+        <button id="btnPaste" class="secondary">Paste Data</button>
+        <button id="btnPreview" class="secondary">Preview Crew</button>
         <button id="btnProcess" class="primary">Process + Download</button>
       </div>
 
@@ -91,7 +92,6 @@
 
     <div class="card">
       <h2>Weights (kg) — Seats 1–8</h2>
-      <p class="sub">Must be filled before processing. We detect the crew from the CSV.</p>
       <div id="weightsTable" class="weights"></div>
     </div>
   </div>
