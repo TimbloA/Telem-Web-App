@@ -1,4 +1,4 @@
-const BACKEND_URL = "https://timblo-telem-web-app.onrender.com";
+const BACKEND_URL = "http://127.0.0.1:8001";
 
 function $(id) { return document.getElementById(id); }
 
