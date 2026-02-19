@@ -1,0 +1,116 @@
+:root {
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+  }
+  
+  body {
+    margin: 0;
+    background: #0b0f19;
+    color: #e9eefc;
+  }
+  
+  .container {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 28px 16px 60px;
+  }
+  
+  h1 { margin: 0 0 6px; font-size: 28px; }
+  h2 { margin: 0 0 10px; font-size: 18px; }
+  
+  .sub { margin: 0 0 18px; color: #aab6d6; }
+  
+  .card {
+    background: #111a2e;
+    border: 1px solid #223055;
+    border-radius: 14px;
+    padding: 16px;
+    margin: 14px 0;
+  }
+  
+  .row {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  
+  .grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  
+  .grid2 label span, .row span {
+    display: block;
+    font-size: 12px;
+    color: #aab6d6;
+    margin-bottom: 6px;
+  }
+  
+  label input, label select {
+    width: 100%;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid #2a3a6a;
+    background: #0b1224;
+    color: #e9eefc;
+  }
+  
+  .span2 { grid-column: span 2; }
+  
+  .actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 12px;
+  }
+  
+  button {
+    border: 1px solid transparent;
+    border-radius: 12px;
+    padding: 10px 14px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  
+  .primary {
+    background: #4b74ff;
+    color: #06102b;
+  }
+  
+  .secondary {
+    background: transparent;
+    color: #e9eefc;
+    border-color: #2a3a6a;
+  }
+  
+  .status {
+    margin-top: 10px;
+    color: #aab6d6;
+    font-size: 13px;
+    min-height: 18px;
+  }
+  
+  .weights {
+    display: grid;
+    gap: 8px;
+  }
+  
+  .weights .wrow {
+    display: grid;
+    grid-template-columns: 60px 1fr 140px 140px;
+    gap: 10px;
+    align-items: center;
+  }
+  
+  .weights .hdr {
+    color: #aab6d6;
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+  
+  .small {
+    color: #aab6d6;
+    font-size: 12px;
+  }

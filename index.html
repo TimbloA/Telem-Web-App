@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>C150 Telemetry</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>C150 Telemetry</h1>
+    <p class="sub">Upload → enter metadata + weights → download processed CSV.</p>
+
+    <div class="card">
+      <label class="row">
+        <span>Backend URL</span>
+        <input id="backendUrl" type="text" placeholder="https://your-backend.onrender.com" />
+      </label>
+
+      <label class="row">
+        <span>Password</span>
+        <input id="password" type="password" placeholder="team password" />
+      </label>
+
+      <label class="row">
+        <span>Telemetry CSV</span>
+        <input id="csvFile" type="file" accept=".csv" />
+      </label>
+
+      <div class="grid2">
+        <label>
+          <span>Season</span>
+          <input id="season" type="text" value="FY26" />
+        </label>
+
+        <label>
+          <span>Shell (Boat Name)</span>
+          <input id="shell" type="text" placeholder="ZIMMER" />
+        </label>
+
+        <label>
+          <span>Zone</span>
+          <select id="zone">
+            <option>T1</option><option>T2</option><option>T3</option><option>T4</option><option>T5</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Piece</span>
+          <input id="piece" type="text" placeholder="1250m" />
+        </label>
+
+        <label>
+          <span>Piece Number</span>
+          <input id="pieceNumber" type="number" min="1" step="1" placeholder="3" />
+        </label>
+
+        <label>
+          <span>Cox UNI</span>
+          <input id="coxUni" type="text" placeholder="at4117" />
+        </label>
+
+        <label class="span2">
+          <span>Rig Info (comment)</span>
+          <input id="rigInfo" type="text" placeholder="82.5/83.0, gates 0, span 160" />
+        </label>
+
+        <label>
+          <span>Wind (m/s) — integer</span>
+          <input id="wind" type="number" step="1" placeholder="3" />
+        </label>
+
+        <label>
+          <span>Stream (m/s) — integer</span>
+          <input id="stream" type="number" step="1" placeholder="-1" />
+        </label>
+
+        <label>
+          <span>Temperature (°C) — integer</span>
+          <input id="temp" type="number" step="1" placeholder="4" />
+        </label>
+      </div>
+
+      <div class="actions">
+        <button id="btnPreview" class="secondary">Preview Crew (Weights)</button>
+        <button id="btnProcess" class="primary">Process + Download</button>
+      </div>
+
+      <div id="status" class="status"></div>
+    </div>
+
+    <div class="card">
+      <h2>Weights (kg) — Seats 1–8</h2>
+      <p class="sub">Must be filled before processing. We detect the crew from the CSV.</p>
+      <div id="weightsTable" class="weights"></div>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
