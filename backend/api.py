@@ -3,7 +3,7 @@ import io
 import csv
 import re
 import json
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Header
 from fastapi.responses import Response, JSONResponse
@@ -19,10 +19,7 @@ from telem_engine import (
 APP_PASSWORD = os.environ.get("C150_PASSWORD", "")
 ALLOWED_ORIGINS = os.environ.get("CORS_ORIGINS", "*").split(",")
 
-# UNI-like abbreviation: ppf2107, wg2445, dl3847, etc.
 UNI_RE = re.compile(r"^[a-z]{2,8}\d{3,8}$", re.IGNORECASE)
-
-SECTION_FILE_INFO = "===== File Info"
 
 app = FastAPI(title="C150 Telemetry Processor")
 
@@ -49,76 +46,126 @@ def read_csv_bytes(data: bytes) -> List[List[str]]:
     return [row for row in reader]
 
 
-def _row_first_cell(rows: List[List[str]], i: int) -> str:
-    if i < 0 or i >= len(rows) or not rows[i]:
-        return ""
-    return (rows[i][0] or "").strip()
+def _header_signature(row: List[str]) -> set:
+    return {str(c).strip() for c in row if c is not None and str(c).strip() != ""}
 
 
 def trim_to_first_export(rows: List[List[str]]) -> List[List[str]]:
     """
-    Clipboard pastes sometimes contain multiple full exports back-to-back.
-    Keep only the FIRST export block.
-
-    Heuristic:
-    - Find all indices where first cell equals '===== File Info'
-    - If there is more than one, truncate at the second occurrence.
+    If clipboard paste contains multiple exports concatenated, keep only the first.
+    We cut at the 2nd occurrence of the File Info header signature row.
     """
-    indices = [i for i in range(len(rows)) if _row_first_cell(rows, i) == SECTION_FILE_INFO]
-    if len(indices) <= 1:
+    hits = []
+    for i, row in enumerate(rows):
+        sig = _header_signature(row)
+        if {"Serial #", "Session", "Filename", "Start Time"}.issubset(sig):
+            hits.append(i)
+    if len(hits) <= 1:
         return rows
-    return rows[:indices[1]]
+    return rows[:hits[1] - 1]
 
 
-def normalize_sections_to_error_markers(rows: List[List[str]]) -> List[List[str]]:
+def sanitize_for_naive_split_parser(rows: List[List[str]]) -> List[List[str]]:
     """
-    Your downstream parser expects '#ERROR!,<Section Name>' markers.
-    Peach clipboard exports sometimes use '===== <Section Name>' instead.
-
-    Convert '===== Something' rows into '#ERROR!,Something' so the parser can find sections.
+    Your parser uses line.split(',') (not a CSV parser).
+    So commas/quotes inside values will break it. Remove them.
     """
     out: List[List[str]] = []
-
     for row in rows:
+        new_row: List[str] = []
+        for cell in row:
+            s = "" if cell is None else str(cell)
+            s = s.replace(",", " ")
+            s = s.replace('"', "")
+            new_row.append(s)
+        out.append(new_row)
+    return out
+
+
+def normalize_section_markers(rows: List[List[str]]) -> List[List[str]]:
+    """
+    CRITICAL FIX:
+    Your outputs contain '=====,Section Name' but the parser only recognizes '#ERROR!,Section Name'.
+    Convert any '=====' style markers into '#ERROR!' markers.
+    """
+    out = [list(r) for r in rows]
+
+    for i, row in enumerate(out):
         if not row:
-            out.append(row)
             continue
 
         first = (row[0] or "").strip()
 
-        # Convert "===== Section Name" rows to "#ERROR!,Section Name"
-        if first.startswith("====="):
-            title = first.lstrip("=").strip()
-
-            # Special cases: the parser searches for these exact strings
-            # '#ERROR!,Aperiodic,0x800A' and '#ERROR!,Periodic'
-            lower = title.lower()
-
-            if lower.startswith("aperiodic"):
-                rest = title[len("Aperiodic"):].strip()
-                rest = rest.lstrip(",").strip()
-                if rest:
-                    out.append(["#ERROR!", "Aperiodic", rest])
-                else:
-                    out.append(["#ERROR!", "Aperiodic"])
-            elif lower.startswith("periodic"):
-                out.append(["#ERROR!", "Periodic"])
-            else:
-                out.append(["#ERROR!", title])
-
+        # Case A: first cell is exactly =====
+        if first == "=====":
+            row[0] = "#ERROR!"
+            out[i] = row
             continue
 
-        # Keep existing #ERROR! rows as-is
-        out.append(row)
+        # Case B: first cell contains "===== File Info" (single-cell marker)
+        if first.startswith("=====") and "," not in first:
+            # Convert "===== File Info" -> ["#ERROR!", "File Info"]
+            section = first.replace("=====", "").strip()
+            out[i] = ["#ERROR!", section]
+            continue
+
+        # Case C: Already "#ERROR!" is fine
+        # (Leave it alone.)
+
+    return out
+
+
+def label_bare_error_markers(rows: List[List[str]]) -> List[List[str]]:
+    """
+    If there is a bare '#ERROR!' line with no section name, infer it from the next header row.
+    (This is a bonus safety net; your main issue is '=====' markers.)
+    """
+    out = [list(r) for r in rows]
+
+    def next_nonempty_row(start_idx: int) -> Optional[int]:
+        j = start_idx
+        while j < len(out):
+            if out[j] and any(str(c).strip() for c in out[j]):
+                return j
+            j += 1
+        return None
+
+    i = 0
+    while i < len(out):
+        row = out[i]
+        if not row:
+            i += 1
+            continue
+
+        first = (row[0] or "").strip()
+
+        if first == "#ERROR!" and (len(row) < 2 or (row[1] or "").strip() == ""):
+            j = next_nonempty_row(i + 1)
+            if j is None:
+                i += 1
+                continue
+
+            sig = _header_signature(out[j])
+
+            if {"Serial #", "Session", "Filename", "Start Time"}.issubset(sig):
+                out[i] = ["#ERROR!", "File Info"]
+            elif {"Lat", "Lon", "UTC", "PeachTime"}.issubset(sig):
+                out[i] = ["#ERROR!", "GPS Info"]
+            elif {"Position", "Name", "Abbr", "Weight"}.issubset(sig):
+                out[i] = ["#ERROR!", "Crew Info"]
+            elif {"Start", "End", "#", "Duration", "Distance", "Rating", "Pace", "comment", "Wind", "Stream", "Validated"}.issubset(sig):
+                out[i] = ["#ERROR!", "Piece"]
+            elif any("Aperiodic" in str(c) for c in out[j]) and any("0x800A" in str(c) for c in out[j]):
+                out[i] = ["#ERROR!", "Aperiodic", "0x800A"]
+            elif any("Periodic" in str(c) for c in out[j]):
+                out[i] = ["#ERROR!", "Periodic"]
+
+        i += 1
 
     return out
 
 
 def parse_first_crew(rows: List[List[str]]) -> List[Dict[str, str]]:
-    """
-    Extract exactly seats 1..8 from the first (trimmed) export.
-    Filters by Abbr being UNI-like to prevent leakage from other tables.
-    """
     crew_meta = find_crew_info_table(rows)
     if not crew_meta:
         raise HTTPException(status_code=400, detail="Crew Info table not found (Position/Name/Abbr/Weight).")
@@ -133,40 +180,28 @@ def parse_first_crew(rows: List[List[str]]) -> List[Dict[str, str]]:
         raise HTTPException(status_code=400, detail="Crew Info table missing Name/Abbr/Weight columns.")
 
     out: List[Dict[str, str]] = []
-    seen_seats = set()
+    seen = set()
 
     for r in range(start, end):
         if not rows[r]:
             continue
-
         pos_raw = (rows[r][pos_c] or "").strip()
         if not pos_raw.isdigit():
             continue
-
-        pos_i = int(pos_raw)
-        if pos_i < 1 or pos_i > 8:
-            continue
-
-        if pos_i in seen_seats:
+        pos = int(pos_raw)
+        if pos < 1 or pos > 8 or pos in seen:
             continue
 
         pad_row(rows[r], max(name_c, abbr_c, weight_c) + 1)
-
         name = (rows[r][name_c] or "").strip()
         abbr = (rows[r][abbr_c] or "").strip()
-        existing_weight = (rows[r][weight_c] or "").strip()
+        w = (rows[r][weight_c] or "").strip()
 
         if not abbr or not UNI_RE.match(abbr):
             continue
 
-        out.append({
-            "pos": pos_i,
-            "name": name,
-            "abbr": abbr,
-            "existing_weight": existing_weight,
-        })
-        seen_seats.add(pos_i)
-
+        out.append({"pos": pos, "name": name, "abbr": abbr, "existing_weight": w})
+        seen.add(pos)
         if len(out) == 8:
             break
 
@@ -190,18 +225,14 @@ async def preview_crew(
     rows = read_csv_bytes(data)
 
     rows = trim_to_first_export(rows)
-    rows = normalize_sections_to_error_markers(rows)
+    rows = normalize_section_markers(rows)
+    rows = label_bare_error_markers(rows)
+    rows = sanitize_for_naive_split_parser(rows)
 
     crew = parse_first_crew(rows)
-
-    warning = None
-    if len(crew) != 8:
-        warning = f"Expected 8 athletes (seats 1–8), found {len(crew)}. Input may be malformed."
-
     payload = {"crew": crew}
-    if warning:
-        payload["warning"] = warning
-
+    if len(crew) != 8:
+        payload["warning"] = f"Expected 8 athletes (seats 1–8), found {len(crew)}."
     return JSONResponse(payload)
 
 
@@ -209,7 +240,6 @@ async def preview_crew(
 async def process_file(
     file: UploadFile = File(...),
 
-    # Metadata
     season: str = Form("FY26"),
     shell: str = Form(...),
     zone: str = Form(...),
@@ -219,11 +249,10 @@ async def process_file(
     cox_uni: str = Form(...),
     rig_info: str = Form(...),
 
-    wind: str = Form(...),         # integer string (m/s)
-    stream: str = Form(...),       # integer string (m/s)
-    temperature: str = Form(...),  # integer string (°C)
+    wind: str = Form(...),
+    stream: str = Form(...),
+    temperature: str = Form(...),
 
-    # weights passed as JSON string: {"pos_1":"70.1", ...}
     weights_json: str = Form(...),
 
     x_c150_password: str | None = Header(default=None),
@@ -247,7 +276,6 @@ async def process_file(
     except Exception:
         raise HTTPException(status_code=400, detail="Piece number must be an integer.")
 
-    # Enforce integers (backend guarantee)
     try:
         wind_i = str(int(wind))
         stream_i = str(int(stream))
@@ -255,18 +283,13 @@ async def process_file(
     except Exception:
         raise HTTPException(status_code=400, detail="Wind/Stream/Temperature must be integers (m/s, m/s, °C).")
 
-    # Parse weights JSON
     try:
         weights_obj = json.loads(weights_json)
         if not isinstance(weights_obj, dict):
             raise ValueError()
     except Exception:
-        raise HTTPException(
-            status_code=400,
-            detail="weights_json must be a JSON object mapping pos keys to kg values.",
-        )
+        raise HTTPException(status_code=400, detail="weights_json must be a JSON object mapping pos keys to kg values.")
 
-    # Validate seats 1-8 not blank and numeric > 0
     for seat in range(1, 9):
         k = f"pos_{seat}"
         raw = str(weights_obj.get(k, "")).strip()
@@ -279,7 +302,6 @@ async def process_file(
         if val <= 0:
             raise HTTPException(status_code=400, detail=f"Invalid weight for seat {seat}: must be > 0 kg.")
 
-    # Normalize keys (lowercase keys)
     weights_by_key: Dict[str, str] = {}
     for k, v in weights_obj.items():
         kk = str(k).strip().lower()
@@ -290,11 +312,9 @@ async def process_file(
     data = await file.read()
     rows = read_csv_bytes(data)
 
-    # Keep only the first export if multiple were pasted
     rows = trim_to_first_export(rows)
-
-    # Normalize section markers so downstream parsers work
-    rows = normalize_sections_to_error_markers(rows)
+    rows = normalize_section_markers(rows)
+    rows = label_bare_error_markers(rows)
 
     out_name = build_output_filename(
         season=season,
@@ -316,16 +336,20 @@ async def process_file(
         weights_by_abbr=weights_by_key,
     )
 
-    # Ensure section markers are still normalized after updates
-    updated = normalize_sections_to_error_markers(updated)
+    # Ensure markers are what your parser expects
+    updated = normalize_section_markers(updated)
+    updated = label_bare_error_markers(updated)
 
-    # Make output rectangular so Excel/Numbers don't visually "shift" columns
+    # Make safe for naive line.split(',')
+    updated = sanitize_for_naive_split_parser(updated)
+
+    # Rectangular output (nice for Sheets/Excel)
     max_len = max((len(r) for r in updated), default=0)
     for r in updated:
         pad_row(r, max_len)
 
     buf = io.StringIO()
-    writer = csv.writer(buf)
+    writer = csv.writer(buf, lineterminator="\n")
     writer.writerows(updated)
     out_bytes = buf.getvalue().encode("utf-8")
 
